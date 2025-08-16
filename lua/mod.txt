@@ -1,0 +1,27 @@
+{
+	"name" : "Rich Presence Musical",
+	"author" : "MetroLine",
+	"version" : "1",
+	"priority" : -2,
+	"pre_hooks" : [
+		{"hook_id" : "core/lib/system/CoreSystem", "script_path" : "Core.lua"}
+	],
+	"hooks": [
+		{
+			"hook_id": "lib/managers/menumanager",
+			"script_path": "localizations.lua"
+		},
+		{
+			"hook_id" : "lib/managers/platformmanager",
+			"script_path" : "platformmanager.lua"
+		},
+		{
+			"hook_id" : "lib/managers/platformmanager",
+			"script_path" : "RichPresence.lua"
+		},
+		{
+			"hook_id" : "lib/managers/skirmishmanager",
+			"script_path" : "RichPresence.lua"
+		}
+	]
+}
