@@ -1,6 +1,0 @@
-<!-- For Rich Presence Ultimate -->
-<mod name="Rich Presence Musical" priority="-2">
-    <Hooks>
-		<hook source_file="lib/managers/platformmanager" file="RichPresence.lua"/>
-    </Hooks>
-</mod>
