@@ -2,16 +2,21 @@
 #include <windows.h>
 #include <TlHelp32.h>
 
-// Í¨¹ı½ø³ÌÃû»ñÈ¡Ö÷´°¿Ú¾ä±ú
-HWND FindMainWindowByProcessName(const wchar_t* processName) {
+// å¼‚æ­¥æŸ¥æ‰¾çŠ¶æ€
+static bool g_spotifySearching = false;
+static HWND g_spotifyResult = NULL;
+static HANDLE g_spotifyThread = NULL;
+
+// Spotifyå¼‚æ­¥æŸ¥æ‰¾çº¿ç¨‹
+DWORD WINAPI SpotifyFindThread(LPVOID) {
 	DWORD pid = 0;
 	HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
 	if (hSnapshot != INVALID_HANDLE_VALUE) {
 		PROCESSENTRY32W pe32;
 		pe32.dwSize = sizeof(PROCESSENTRY32W);
 		if (Process32FirstW(hSnapshot, &pe32)) {
-			do {
-				if (_wcsicmp(pe32.szExeFile, processName) == 0) {
+			do {		
+				if (_wcsicmp(pe32.szExeFile, L"Spotify.exe") == 0) {
 					pid = pe32.th32ProcessID;
 					break;
 				}
@@ -19,22 +24,83 @@ HWND FindMainWindowByProcessName(const wchar_t* processName) {
 		}
 		CloseHandle(hSnapshot);
 	}
-	if (pid == 0) return NULL;
 
-	// Í¨¹ı½ø³ÌID»ñÈ¡´°¿Ú¾ä±ú
-	HWND hwnd = NULL;
-	while ((hwnd = FindWindowExW(NULL, hwnd, NULL, NULL)) != NULL) {
-		DWORD windowPid;
-		GetWindowThreadProcessId(hwnd, &windowPid);
-		if (windowPid == pid) {
-			wchar_t title[256];
-			GetWindowTextW(hwnd, title, 256);
-			if (wcsstr(title, L" - ") != NULL) {  // ¼ì²éÊÇ·ñÊÇ²¥·Å´°¿Ú
-				return hwnd;
+	if (pid != 0) {
+		HWND hwnd = NULL;
+		while ((hwnd = FindWindowExW(NULL, hwnd, NULL, NULL)) != NULL) {
+			DWORD windowPid;
+			GetWindowThreadProcessId(hwnd, &windowPid);
+			if (windowPid == pid) {
+				wchar_t title[256];
+				GetWindowTextW(hwnd, title, 256);
+				if (wcsstr(title, L" - ") != NULL) {
+					g_spotifyResult = hwnd;
+					break;
+				}
 			}
 		}
 	}
-	return NULL;
+
+	return 0;
+}
+
+// å¯åŠ¨Spotifyå¼‚æ­¥æŸ¥æ‰¾
+void StartSpotifyAsyncFind() {
+	if (g_spotifySearching) {
+		return;
+	}
+
+	g_spotifySearching = true;
+	g_spotifyResult = NULL;
+	g_spotifyThread = CreateThread(NULL, 0, SpotifyFindThread, NULL, 0, NULL);
+}
+
+// Spotify
+int GetSpotifyNowPlaying(lua_State* L) {
+	// å…ˆå¯åŠ¨å¼‚æ­¥æŸ¥æ‰¾ï¼ˆå¦‚æœè¿˜æ²¡å¼€å§‹çš„è¯ï¼‰
+	if (!g_spotifySearching) {
+		StartSpotifyAsyncFind();
+	}
+
+	// æ£€æŸ¥æŸ¥æ‰¾çŠ¶æ€
+	if (g_spotifySearching) {
+		if (WaitForSingleObject(g_spotifyThread, 0) == WAIT_OBJECT_0) {
+			// æŸ¥æ‰¾å®Œæˆ
+			CloseHandle(g_spotifyThread);
+			g_spotifyThread = NULL;
+			g_spotifySearching = false;
+		}
+		else {
+			// è¿˜åœ¨æŸ¥æ‰¾ä¸­
+			lua_pushstring(L, "SEARCHING");
+			return 1;
+		}
+	}
+
+	// æ£€æŸ¥ç»“æœ
+	if (g_spotifyResult && IsWindow(g_spotifyResult)) {
+		wchar_t title[256];
+		GetWindowTextW(g_spotifyResult, title, 256);
+
+		// è½¬æ¢ä¸ºUTF-8
+		char utf8Title[512];
+		WideCharToMultiByte(CP_UTF8, 0, title, -1, utf8Title, 512, NULL, NULL);
+
+		// è·å–åˆ°ç»“æœåé‡ç½®æ‰€æœ‰çŠ¶æ€ä¸ºNULL
+		g_spotifyResult = NULL;
+		g_spotifySearching = false;
+		if (g_spotifyThread) {
+			CloseHandle(g_spotifyThread);
+			g_spotifyThread = NULL;
+		}
+
+		lua_pushstring(L, utf8Title);
+	}
+	else {
+		lua_pushstring(L, "ERROR_WINDOW");
+	}
+
+	return 1;
 }
 
 // NetEase
@@ -57,26 +123,7 @@ int GetNetEaseMusicNowPlaying(lua_State* L) {
 	return 1;
 }
 
-// Spotify
-int GetSpotifyNowPlaying(lua_State* L) {
-	HWND hwnd = FindMainWindowByProcessName(L"Spotify.exe");
-	if (hwnd) {
-		wchar_t title[256];
-		GetWindowTextW(hwnd, title, 256);
-
-		// To UTF-8
-		char utf8Title[512];
-		WideCharToMultiByte(CP_UTF8, 0, title, -1, utf8Title, 512, NULL, NULL);
-
-		lua_pushstring(L, utf8Title);
-	}
-	else {
-		lua_pushstring(L, "ERROR_WINDOW");
-	}
-	return 1;
-}
-
-/* ÒÔÏÂÊÇSuperBLT APIÄÚÈİ */
+/* ä»¥ä¸‹æ˜¯SuperBLT APIå†…å®¹ */
 
 void Plugin_Init()
 {
